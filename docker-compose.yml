@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # URL the BROWSER uses to reach the backend (baked in at build time)
+        VITE_API_URL: http://localhost:8000
+    ports:
+      # 3000 is in the backend's CORS allowlist
+      - "3000:80"
+    depends_on:
+      - backend
