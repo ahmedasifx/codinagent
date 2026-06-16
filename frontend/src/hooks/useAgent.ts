@@ -4,7 +4,7 @@ import {
   AgentEvent,
   ToolCallBlock,
   ToolResultBlock,
-  Workflow,
+  Artifact,
 } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -18,7 +18,8 @@ export function useAgent() {
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [workflow, setWorkflow] = useState<Workflow | null>(null);
+  const [skill, setSkill] = useState<string | null>(null);
+  const [agentSlug, setAgentSlug] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const sendMessage = useCallback(
@@ -26,11 +27,9 @@ export function useAgent() {
       if (isRunning) return;
       setError(null);
 
-      // Add user message
       const userMsg: ChatMessage = { id: makeId(), role: "user", content: text };
       setMessages((prev) => [...prev, userMsg]);
 
-      // Placeholder for streaming assistant message
       const assistantId = makeId();
       const assistantMsg: ChatMessage = {
         id: assistantId,
@@ -38,6 +37,7 @@ export function useAgent() {
         content: "",
         toolCalls: [],
         toolResults: [],
+        artifacts: [],
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -46,12 +46,16 @@ export function useAgent() {
       abortRef.current = new AbortController();
 
       try {
-        // Build history (exclude the streaming placeholder)
         const history = messages
           .filter((m) => !m.isStreaming)
           .map((m) => ({ role: m.role, content: m.content }));
 
-        const response = await fetch(`${API_BASE}/chat/stream`, {
+        // Per-agent endpoint when an agent is selected; otherwise the default alias.
+        const url = agentSlug
+          ? `${API_BASE}/agents/${agentSlug}/chat/stream`
+          : `${API_BASE}/chat/stream`;
+
+        const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: text, history }),
@@ -86,14 +90,17 @@ export function useAgent() {
               continue;
             }
 
-            // Session-level events (not tied to the message)
+            // Session-level events (not tied to a single message)
             if (event.type === "preview") {
               setPreviewUrl(event.url);
               continue;
             }
-            if (event.type === "workflow") {
-              setWorkflow(event.workflow);
+            if (event.type === "skill_selected") {
+              setSkill(event.skill);
               continue;
+            }
+            if (event.type === "agent_selected") {
+              continue; // already reflected by the selector
             }
 
             setMessages((prev) =>
@@ -114,14 +121,32 @@ export function useAgent() {
                     return { ...m, toolResults: [...(m.toolResults ?? []), tr] };
                   }
 
+                  case "progress":
+                    return { ...m, progress: { label: event.label, pct: event.pct } };
+
+                  case "artifact": {
+                    const art: Artifact = {
+                      artifact_id: event.artifact_id,
+                      kind: event.kind,
+                      url: event.url,
+                      mime: event.mime,
+                    };
+                    return {
+                      ...m,
+                      artifacts: [...(m.artifacts ?? []), art],
+                      progress: undefined,
+                    };
+                  }
+
                   case "done":
-                    return { ...m, isStreaming: false };
+                    return { ...m, isStreaming: false, progress: undefined };
 
                   case "error":
                     return {
                       ...m,
                       content: m.content + `\n\n⚠️ Error: ${event.content}`,
                       isStreaming: false,
+                      progress: undefined,
                     };
 
                   default:
@@ -151,7 +176,7 @@ export function useAgent() {
         );
       }
     },
-    [messages, isRunning]
+    [messages, isRunning, agentSlug]
   );
 
   const stopGeneration = useCallback(() => {
@@ -163,8 +188,7 @@ export function useAgent() {
     setMessages([]);
     setError(null);
     setPreviewUrl(null);
-    setWorkflow(null);
-    // Also reset the E2B sandbox
+    setSkill(null);
     await fetch(`${API_BASE}/sandbox`, { method: "DELETE" }).catch(() => {});
   }, []);
 
@@ -173,7 +197,9 @@ export function useAgent() {
     isRunning,
     error,
     previewUrl,
-    workflow,
+    skill,
+    agentSlug,
+    setAgentSlug,
     sendMessage,
     stopGeneration,
     clearChat,

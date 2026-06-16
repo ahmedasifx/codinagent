@@ -4,6 +4,8 @@ import { MessageBubble } from "./components/MessageBubble";
 import { PreviewPanel } from "./components/PreviewPanel";
 import "./App.css";
 
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+
 const EXAMPLES = [
   "Build a landing page for a specialty coffee shop with a hero, menu and contact section",
   "Build a FastAPI todo API with a small frontend to add and complete todos",
@@ -11,11 +13,10 @@ const EXAMPLES = [
   "Write a merge sort implementation and test it with a random list",
 ];
 
-const WORKFLOW_LABELS: Record<string, string> = {
-  landing_page: "landing page",
-  fullstack: "fullstack",
-  general: "general",
-};
+interface AgentInfo {
+  slug: string;
+  name: string;
+}
 
 export default function App() {
   const {
@@ -23,15 +24,26 @@ export default function App() {
     isRunning,
     error,
     previewUrl,
-    workflow,
+    skill,
+    agentSlug,
+    setAgentSlug,
     sendMessage,
     stopGeneration,
     clearChat,
     closePreview,
   } = useAgent();
   const [input, setInput] = useState("");
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load available agents for the picker
+  useEffect(() => {
+    fetch(`${API_BASE}/agents`)
+      .then((r) => r.json())
+      .then((data: AgentInfo[]) => setAgents(data))
+      .catch(() => {});
+  }, []);
 
   // Auto-scroll
   useEffect(() => {
@@ -74,21 +86,33 @@ export default function App() {
             <span className="badge">E2B</span>
             <span className="badge">LangGraph</span>
             <span className="badge">OpenRouter</span>
-            {workflow && (
-              <span className="badge workflow-badge">
-                {WORKFLOW_LABELS[workflow] ?? workflow}
-              </span>
-            )}
+            {skill && <span className="badge workflow-badge">{skill}</span>}
           </div>
         </div>
-        <button
-          className="clear-btn"
-          onClick={clearChat}
-          disabled={isRunning || messages.length === 0}
-          title="Clear chat & reset sandbox"
-        >
-          Reset
-        </button>
+        <div className="header-right">
+          <select
+            className="agent-select"
+            value={agentSlug ?? ""}
+            onChange={(e) => setAgentSlug(e.target.value || null)}
+            disabled={isRunning}
+            title="Select agent"
+          >
+            <option value="">Default (coding agent)</option>
+            {agents.map((a) => (
+              <option key={a.slug} value={a.slug}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="clear-btn"
+            onClick={clearChat}
+            disabled={isRunning || messages.length === 0}
+            title="Clear chat & reset sandbox"
+          >
+            Reset
+          </button>
+        </div>
       </header>
 
       <div className={`content-row ${previewUrl ? "split" : ""}`}>

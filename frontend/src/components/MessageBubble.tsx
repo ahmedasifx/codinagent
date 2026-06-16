@@ -1,5 +1,6 @@
 import { ChatMessage } from "../types";
 import { ToolCallPanel } from "./ToolCallPanel";
+import { ArtifactPanel } from "./ArtifactPanel";
 
 interface Props {
   message: ChatMessage;
@@ -82,6 +83,13 @@ export function MessageBubble({ message }: Props) {
             <span className="dot-2">•</span>
             <span className="dot-3">•</span>
           </div>
+        )}
+
+        {!isUser && (
+          <ArtifactPanel
+            artifacts={message.artifacts ?? []}
+            progress={message.progress}
+          />
         )}
       </div>
     </div>
