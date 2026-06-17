@@ -22,6 +22,16 @@ class Settings:
             "OPENROUTER_MODEL", "deepseek/deepseek-coder"
         )
         self.openrouter_base_url: str = "https://openrouter.ai/api/v1"
+        # Fallback chain: if the primary model errors/429s, OpenRouter routes to the next.
+        # Must be tool-calling capable (the agent binds tools).
+        self.fallback_models: list[str] = [
+            m.strip()
+            for m in os.environ.get(
+                "OPENROUTER_FALLBACK_MODELS",
+                "deepseek/deepseek-v4-flash",
+            ).split(",")
+            if m.strip()
+        ]
         self.embedding_model: str = os.environ.get(
             "EMBEDDING_MODEL", "openai/text-embedding-3-small"
         )

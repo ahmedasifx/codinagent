@@ -47,27 +47,15 @@ class AgentRegistry:
 
         if not db_enabled():
             return None
-        from ..models import Agent, AgentSkill, AgentTool, Skill, Tool
+        from ..models import Agent
 
         with session_scope() as session:
             row = session.query(Agent).filter(Agent.slug == slug).one_or_none()
             if row is None:
                 return None
-            skill_slugs = [
-                s.slug
-                for s in session.query(Skill)
-                .join(AgentSkill, AgentSkill.skill_id == Skill.id)
-                .filter(AgentSkill.agent_id == row.id)
-                .order_by(AgentSkill.position)
-                .all()
-            ]
-            tool_slugs = [
-                t.slug
-                for t in session.query(Tool)
-                .join(AgentTool, AgentTool.tool_id == Tool.id)
-                .filter(AgentTool.agent_id == row.id)
-                .all()
-            ]
+            # Skill/tool slugs live in config so a custom agent can reference BOTH
+            # code-defined (core) and DB-defined slugs uniformly (no FK constraint).
+            cfg = row.config or {}
             return AgentDef(
                 slug=row.slug,
                 name=row.name,
@@ -76,8 +64,9 @@ class AgentRegistry:
                 personality=row.personality,
                 system_prompt=row.system_prompt,
                 model=row.model,
-                skills=skill_slugs,
-                tools=tool_slugs,
+                skills=cfg.get("skills", []),
+                tools=cfg.get("tools", []),
+                config=cfg,
                 is_core=False,
             )
 

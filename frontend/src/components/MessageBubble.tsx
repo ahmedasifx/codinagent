@@ -1,9 +1,12 @@
 import { ChatMessage } from "../types";
 import { ToolCallPanel } from "./ToolCallPanel";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { PlanPanel } from "./PlanPanel";
 
 interface Props {
   message: ChatMessage;
+  onApprove?: (id: string, editedPlan: string) => void;
+  onReject?: (id: string) => void;
 }
 
 // Minimal markdown-ish rendering: fenced code blocks + inline `code`
@@ -55,13 +58,23 @@ function renderInline(text: string): React.ReactNode[] {
   return parts;
 }
 
-export function MessageBubble({ message }: Props) {
+export function MessageBubble({ message, onApprove, onReject }: Props) {
   const isUser = message.role === "user";
 
   return (
     <div className={`message ${isUser ? "user" : "assistant"}`}>
       <div className="message-avatar">{isUser ? "You" : "AI"}</div>
       <div className="message-body">
+        {/* Plan (auto or awaiting approval) shown first */}
+        {!isUser && message.plan && (
+          <PlanPanel
+            plan={message.plan}
+            awaitingApproval={message.awaitingApproval}
+            onApprove={(edited) => onApprove?.(message.id, edited)}
+            onReject={() => onReject?.(message.id)}
+          />
+        )}
+
         {/* Tool calls before text for assistant */}
         {!isUser && (
           <ToolCallPanel

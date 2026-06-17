@@ -35,11 +35,14 @@ async def run_agent_stream(
     message: str,
     history: list[dict],
     agent_slug: str | None = None,
+    planning: str | None = None,
+    approved_plan: str | None = None,
 ) -> AsyncIterator[dict]:
     load_builtins()
     agent_slug = agent_slug or get_settings().default_agent
 
     try:
+        agent_def = AGENT_REGISTRY.get(agent_slug)
         graph = AGENT_REGISTRY.compiled_graph(agent_slug)
     except KeyError:
         yield {"type": "error", "content": f"Unknown agent: {agent_slug}"}
@@ -47,6 +50,37 @@ async def run_agent_stream(
         return
 
     yield {"type": "agent_selected", "agent": agent_slug}
+
+    # ── Planning mode ──
+    from .planner import generate_plan, resolve_planning_mode
+
+    mode = resolve_planning_mode(planning, agent_def.config, approved_plan)
+    plan_text = approved_plan
+    if mode in ("auto", "approve"):
+        try:
+            plan_text = generate_plan(agent_def, message, history)
+        except Exception as e:
+            friendly = (
+                "The model is rate-limited right now (HTTP 429). Please retry in a "
+                "moment, or set OPENROUTER_MODEL / OPENROUTER_FALLBACK_MODELS to a less "
+                "busy model."
+                if "429" in str(e) or "rate" in str(e).lower()
+                else f"Could not generate a plan: {e}"
+            )
+            if mode == "approve":
+                # Can't approve a non-plan — surface a retryable error and stop.
+                yield {"type": "error", "content": friendly}
+                yield {"type": "done"}
+                return
+            # auto: degrade gracefully — proceed to execute without a plan.
+            plan_text = None
+        else:
+            yield {"type": "plan", "plan": plan_text}
+            if mode == "approve":
+                # Pause: wait for the user to approve before any tool runs.
+                yield {"type": "awaiting_approval"}
+                yield {"type": "done"}
+                return
 
     lc_messages = _rebuild_history(history)
     lc_messages.append(HumanMessage(content=message))
@@ -56,6 +90,7 @@ async def run_agent_stream(
         "agent_slug": agent_slug,
         "selected_skill": None,
         "recalled": [],
+        "plan": plan_text,  # off → None; auto/execute → the plan
     }
 
     try:

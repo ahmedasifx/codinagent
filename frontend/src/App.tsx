@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useCallback, KeyboardEvent } from "react";
 import { useAgent } from "./hooks/useAgent";
 import { MessageBubble } from "./components/MessageBubble";
 import { PreviewPanel } from "./components/PreviewPanel";
+import { AgentBuilder } from "./components/AgentBuilder";
 import "./App.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -16,6 +17,7 @@ const EXAMPLES = [
 interface AgentInfo {
   slug: string;
   name: string;
+  planning?: "off" | "auto" | "approve";
 }
 
 export default function App() {
@@ -27,23 +29,32 @@ export default function App() {
     skill,
     agentSlug,
     setAgentSlug,
+    planningMode,
+    setPlanningMode,
     sendMessage,
+    approvePlan,
+    rejectPlan,
     stopGeneration,
     clearChat,
     closePreview,
   } = useAgent();
   const [input, setInput] = useState("");
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [showBuilder, setShowBuilder] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load available agents for the picker
-  useEffect(() => {
+  const loadAgents = useCallback(() => {
     fetch(`${API_BASE}/agents`)
       .then((r) => r.json())
       .then((data: AgentInfo[]) => setAgents(data))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadAgents();
+  }, [loadAgents]);
 
   // Auto-scroll
   useEffect(() => {
@@ -93,7 +104,12 @@ export default function App() {
           <select
             className="agent-select"
             value={agentSlug ?? ""}
-            onChange={(e) => setAgentSlug(e.target.value || null)}
+            onChange={(e) => {
+              const slug = e.target.value || null;
+              setAgentSlug(slug);
+              const a = agents.find((x) => x.slug === slug);
+              if (a?.planning) setPlanningMode(a.planning);
+            }}
             disabled={isRunning}
             title="Select agent"
           >
@@ -104,6 +120,25 @@ export default function App() {
               </option>
             ))}
           </select>
+          <select
+            className="agent-select"
+            value={planningMode}
+            onChange={(e) => setPlanningMode(e.target.value as typeof planningMode)}
+            disabled={isRunning}
+            title="Planning mode"
+          >
+            <option value="off">Plan: off</option>
+            <option value="auto">Plan: auto</option>
+            <option value="approve">Plan: approve</option>
+          </select>
+          <button
+            className="clear-btn"
+            onClick={() => setShowBuilder(true)}
+            disabled={isRunning}
+            title="Create a custom agent"
+          >
+            ＋ New
+          </button>
           <button
             className="clear-btn"
             onClick={clearChat}
@@ -137,7 +172,12 @@ export default function App() {
         )}
 
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            onApprove={approvePlan}
+            onReject={rejectPlan}
+          />
         ))}
 
         {error && (
@@ -176,6 +216,17 @@ export default function App() {
 
         {previewUrl && <PreviewPanel url={previewUrl} onClose={closePreview} />}
       </div>
+
+      {showBuilder && (
+        <AgentBuilder
+          onClose={() => setShowBuilder(false)}
+          onCreated={(slug) => {
+            setShowBuilder(false);
+            loadAgents();
+            setAgentSlug(slug);
+          }}
+        />
+      )}
     </div>
   );
 }

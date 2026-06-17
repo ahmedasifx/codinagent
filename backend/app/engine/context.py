@@ -13,6 +13,7 @@ def assemble_system_prompt(
     agent: AgentDef,
     selected_skill: str | None,
     recalled: list[str] | None = None,
+    plan: str | None = None,
 ) -> str:
     parts: list[str] = []
 
@@ -35,5 +36,11 @@ def assemble_system_prompt(
     if recalled:
         joined = "\n".join(f"- {m}" for m in recalled)
         parts.append("## Relevant memory\n" + joined)
+
+    if plan:
+        parts.append(
+            "## Approved plan (follow these steps)\n" + plan
+            + "\n\nExecute this plan now using your tools. Do not re-ask for approval."
+        )
 
     return "\n\n".join(p for p in parts if p)

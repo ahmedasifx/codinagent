@@ -1,5 +1,7 @@
 export type Role = "user" | "assistant";
 
+export type PlanningMode = "off" | "auto" | "approve";
+
 export interface ChatMessage {
   id: string;
   role: Role;
@@ -8,6 +10,9 @@ export interface ChatMessage {
   toolResults?: ToolResultBlock[];
   artifacts?: Artifact[];
   progress?: ProgressBlock;
+  plan?: string;
+  awaitingApproval?: boolean;
+  userPrompt?: string; // the originating user message (for the approve→execute request)
   isStreaming?: boolean;
 }
 
@@ -37,6 +42,8 @@ export type AgentEvent =
   | { type: "token"; content: string }
   | { type: "agent_selected"; agent: string }
   | { type: "skill_selected"; skill: string }
+  | { type: "plan"; plan: string }
+  | { type: "awaiting_approval" }
   | { type: "tool_call"; name: string; args: Record<string, unknown> }
   | { type: "tool_result"; content: string }
   | { type: "progress"; label: string; pct?: number }

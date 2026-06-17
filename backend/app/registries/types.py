@@ -26,4 +26,5 @@ class AgentDef:
     model: str | None = None
     skills: list[str] = field(default_factory=list)  # skill slugs
     tools: list[str] = field(default_factory=list)  # always-on tool slugs
+    config: dict = field(default_factory=dict)  # e.g. {"auto_recall": true}
     is_core: bool = True

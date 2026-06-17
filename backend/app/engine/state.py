@@ -11,3 +11,4 @@ class AgentState(TypedDict):
     agent_slug: str
     selected_skill: str | None
     recalled: list[str]  # memory snippets injected into context
+    plan: str | None  # approved/auto plan injected into the system prompt

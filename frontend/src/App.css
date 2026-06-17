@@ -597,3 +597,49 @@ body {
   background: var(--accent, #6cf);
   transition: width 0.3s ease;
 }
+
+/* ── Custom agent builder ───────────────────────────────────────────────── */
+.builder-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.builder {
+  background: var(--bg, #111); border: 1px solid var(--border, #333);
+  border-radius: 12px; padding: 20px; width: min(560px, 92vw);
+  max-height: 88vh; overflow-y: auto;
+}
+.builder-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.builder-head h2 { font-size: 16px; margin: 0; }
+.builder-x { background: none; border: none; color: inherit; font-size: 22px; cursor: pointer; }
+.builder-label { display: block; font-size: 12px; opacity: 0.7; margin: 12px 0 4px; }
+.builder-input, .builder-textarea {
+  width: 100%; box-sizing: border-box; background: #0d0d0d;
+  color: inherit; border: 1px solid var(--border, #333); border-radius: 6px;
+  padding: 8px 10px; font: inherit; font-size: 13px;
+}
+.builder-textarea { resize: vertical; }
+.builder-hint { font-size: 11px; opacity: 0.5; margin-top: 3px; }
+.builder-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  background: #0d0d0d; color: inherit; border: 1px solid var(--border, #333);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+}
+.chip-on { background: var(--accent, #6cf); color: #001; border-color: var(--accent, #6cf); }
+.builder-err { color: #f77; font-size: 13px; margin-top: 12px; }
+.builder-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+/* ── Plan panel (planning mode) ─────────────────────────────────────────── */
+.plan-panel {
+  border: 1px solid var(--accent, #6cf); border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 12px; background: rgba(102,204,255,0.06);
+}
+.plan-head { font-size: 13px; font-weight: 600; margin-bottom: 8px; opacity: 0.9; }
+.plan-text {
+  white-space: pre-wrap; font-size: 13px; margin: 0; font-family: inherit; line-height: 1.5;
+}
+.plan-edit {
+  width: 100%; box-sizing: border-box; background: #0d0d0d; color: inherit;
+  border: 1px solid var(--border, #333); border-radius: 6px; padding: 8px 10px;
+  font: inherit; font-size: 13px; line-height: 1.5; resize: vertical;
+}
+.plan-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }

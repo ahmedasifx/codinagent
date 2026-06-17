@@ -36,27 +36,22 @@ class SkillRegistry:
 
         if not db_enabled():
             return None
-        from ..models import Skill, SkillTool, Tool
+        from ..models import Skill
 
         with session_scope() as session:
             row = session.query(Skill).filter(Skill.slug == slug).one_or_none()
             if row is None:
                 return None
-            tool_slugs = [
-                t.slug
-                for t in session.query(Tool)
-                .join(SkillTool, SkillTool.tool_id == Tool.id)
-                .filter(SkillTool.skill_id == row.id)
-                .all()
-            ]
+            cfg = row.config or {}
             return SkillDef(
                 slug=row.slug,
                 name=row.name,
                 description=row.description,
                 instructions=row.instructions,
                 when_to_use=row.when_to_use,
-                required_tools=tool_slugs,
-                sub_skills=row.config.get("sub_skills", []),
+                # slugs (core or custom) stored in config — no FK constraint
+                required_tools=cfg.get("required_tools", []),
+                sub_skills=cfg.get("sub_skills", []),
                 is_core=False,
             )
 

@@ -24,41 +24,54 @@ Skills:
 User request: {request}"""
 
 
+def _auto_recall(agent: AgentDef, last_human) -> list[str]:
+    """Recall long-term memories for the request when the agent opts in (config
+    auto_recall) or carries the recall_memory tool. Off by default to control cost."""
+    from ..core.db import db_enabled
+
+    if last_human is None or not db_enabled():
+        return []
+    wants = agent.config.get("auto_recall") or ("recall_memory" in agent.tools)
+    if not wants:
+        return []
+    try:
+        from ..memory import store
+
+        return store.recall(last_human.content, k=3, namespace=agent.slug)
+    except Exception:
+        return []
+
+
 def make_select_node(agent: AgentDef):
     skills = SKILL_REGISTRY.get_many(agent.skills)
 
     def select(state: AgentState) -> dict:
-        if not skills:
-            return {"selected_skill": None}
-        if len(skills) == 1:
-            return {"selected_skill": skills[0].slug}
-
         last_human = next(
             (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             None,
         )
-        if last_human is None:
-            return {"selected_skill": skills[0].slug}
+        recalled = _auto_recall(agent, last_human)
+
+        if not skills:
+            return {"selected_skill": None, "recalled": recalled}
+        if len(skills) == 1 or last_human is None:
+            return {"selected_skill": skills[0].slug, "recalled": recalled}
 
         catalog = "\n".join(f"- {s.slug}: {s.when_to_use}" for s in skills)
+        chosen = skills[0].slug
         try:
             llm = get_llm(streaming=False, model=agent.model)
             resp = llm.invoke(
-                [
-                    HumanMessage(
-                        content=_SELECT_PROMPT.format(
-                            skills=catalog, request=last_human.content
-                        )
-                    )
-                ]
+                [HumanMessage(content=_SELECT_PROMPT.format(skills=catalog, request=last_human.content))]
             )
             answer = resp.content.strip().lower()
             for s in skills:
                 if s.slug in answer:
-                    return {"selected_skill": s.slug}
+                    chosen = s.slug
+                    break
         except Exception:
             pass
-        return {"selected_skill": skills[0].slug}
+        return {"selected_skill": chosen, "recalled": recalled}
 
     return select
 
@@ -84,7 +97,9 @@ def make_agent_node(agent: AgentDef):
         llm = get_llm(model=agent.model)
         llm = llm.bind_tools(tools) if tools else llm
 
-        system = assemble_system_prompt(agent, selected, state.get("recalled"))
+        system = assemble_system_prompt(
+            agent, selected, state.get("recalled"), state.get("plan")
+        )
         messages = [SystemMessage(content=system)] + state["messages"]
         response = llm.invoke(messages)
         return {"messages": [response]}

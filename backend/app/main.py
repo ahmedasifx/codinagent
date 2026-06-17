@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import agents, artifacts, chat
+from .api import agents, artifacts, chat, credentials, mcp, tools
 from .core.config import get_settings
 from .core.sandbox import MANAGER
 from .registries.loader import load_builtins
@@ -30,6 +30,9 @@ app.add_middleware(
 
 app.include_router(chat.router)
 app.include_router(agents.router)
+app.include_router(tools.router)
+app.include_router(credentials.router)
+app.include_router(mcp.router)
 app.include_router(artifacts.router)
 
 
