@@ -26,13 +26,20 @@ class SandboxManager:
         self._sessions: dict[str, _SandboxSession] = {}
 
     def get(self, session_id: str = DEFAULT_SESSION) -> Sandbox:
+        timeout = get_settings().sandbox_timeout
         sess = self._sessions.get(session_id)
-        if sess is None:
-            # Default sandbox timeout is 300s — too short for npm installs.
-            sbx = Sandbox(api_key=get_settings().e2b_api_key, timeout=600)
-            sess = _SandboxSession(sbx)
-            self._sessions[session_id] = sess
-        return sess.sandbox
+        if sess is not None:
+            # Rolling keep-alive: every tool call refreshes the timeout, so a long
+            # multi-step build won't expire mid-run. If the sandbox already died,
+            # set_timeout raises — drop it and create a fresh one (auto-recovery).
+            try:
+                sess.sandbox.set_timeout(timeout)
+                return sess.sandbox
+            except Exception:
+                self._sessions.pop(session_id, None)
+        sbx = Sandbox(api_key=get_settings().e2b_api_key, timeout=timeout)
+        self._sessions[session_id] = _SandboxSession(sbx)
+        return self._sessions[session_id].sandbox
 
     def background(self, session_id: str = DEFAULT_SESSION) -> dict[int, dict]:
         self.get(session_id)  # ensure session exists

@@ -182,6 +182,15 @@ def test_planning_failure_emits_error_not_plan():
     print("✓ planning failure → error (no fake plan)")
 
 
+def test_remotion_blank_heuristic():
+    from app.tools.internal.remotion import _looks_blank
+
+    assert _looks_blank(8.0, 1.2) is True      # flat + static → blank
+    assert _looks_blank(40.0, 9.0) is False     # detailed + moving → fine
+    assert _looks_blank(40.0, 1.0) is False     # detailed but static → not flagged
+    print("✓ remotion blank heuristic")
+
+
 def test_plan_injected_into_prompt():
     from app.engine.context import assemble_system_prompt
     from app.registries.types import AgentDef
@@ -202,5 +211,6 @@ if __name__ == "__main__":
     test_resolve_planning_mode()
     test_invoke_with_retry()
     test_planning_failure_emits_error_not_plan()
+    test_remotion_blank_heuristic()
     test_plan_injected_into_prompt()
     print("\nAll feature tests passed")

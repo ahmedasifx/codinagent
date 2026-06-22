@@ -60,6 +60,87 @@ def _read_bytes(sbx, path: str) -> bytes | None:
     return None
 
 
+def _persist(data: bytes, kind: str, mime: str, ext: str, meta: dict) -> str:
+    """Store bytes as an artifact (+ DB row) and return an ARTIFACT: marker line."""
+    art = store_bytes(data, kind=kind, mime=mime, ext=ext)
+    if db_enabled():
+        try:
+            from ...models import Artifact
+
+            with session_scope() as session:
+                session.add(Artifact(type=kind, uri=art.path, mime=mime, meta=meta))
+        except Exception:
+            pass
+    url = f"/artifacts/{art.id}/download"
+    return "ARTIFACT:" + json.dumps(
+        {"artifact_id": art.id, "kind": kind, "mime": mime, "url": url}
+    )
+
+
+def _looks_blank(max_std: float, avg_diff: float) -> bool:
+    """Heuristic: low spatial detail across frames AND little frame-to-frame change ⇒
+    the render is probably mostly blank/static (subject off-screen or a 3D collapse)."""
+    return max_std < 14 and avg_diff < 4
+
+
+def _verify_stills(sbx, project_dir, entry, composition_id, frames=(0, 15, 45, 90)):
+    """Render a few stills, persist them as image artifacts, and run a best-effort
+    blank/low-detail heuristic. Returns (markers: list[str], warning: str | None)."""
+    markers: list[str] = []
+    paths: list[str] = []
+    for f in frames:
+        rel = f"out/_check_{f}.png"
+        try:
+            r = sbx.commands.run(
+                f"npx remotion still {entry} {composition_id} {rel} --frame={f}",
+                cwd=project_dir, timeout=300,
+            )
+            if getattr(r, "exit_code", 1) != 0:
+                continue
+        except Exception:
+            continue
+        abs_p = f"{project_dir.rstrip('/')}/{rel}"
+        png = _read_bytes(sbx, abs_p)
+        if png:
+            markers.append(_persist(png, "image", "image/png", "png",
+                                    {"composition_id": composition_id, "still_frame": f}))
+            paths.append(abs_p)
+
+    warning = None
+    if len(paths) >= 2:
+        # Compute spatial detail + inter-frame change in the sandbox via Pillow.
+        script = (
+            "import json\n"
+            "try:\n"
+            " from PIL import Image, ImageChops, ImageStat\n"
+            f" ps={paths!r}\n"
+            " ims=[Image.open(p).convert('L').resize((160,284)) for p in ps]\n"
+            " stds=[ImageStat.Stat(i).stddev[0] for i in ims]\n"
+            " diffs=[ImageStat.Stat(ImageChops.difference(a,b)).mean[0] for a,b in zip(ims,ims[1:])]\n"
+            " print('STATS', round(max(stds),2), round(sum(diffs)/len(diffs),2))\n"
+            "except Exception as e:\n"
+            " print('STATS_ERR', e)\n"
+        )
+        try:
+            sbx.run_code("!pip install pillow -q")
+            ex = sbx.run_code(script)
+            line = " ".join(ex.logs.stdout or [])
+            if "STATS " in line:
+                parts = line.split("STATS ", 1)[1].split()
+                max_std, avg_diff = float(parts[0]), float(parts[1])
+                if _looks_blank(max_std, avg_diff):
+                    warning = (
+                        f"⚠️ Verification: rendered frames look mostly blank/static "
+                        f"(detail={max_std}, motion={avg_diff}). The subject may be "
+                        f"off-screen, at opacity 0, or a degenerate 3D transform "
+                        f"(e.g. the phone rotated edge-on). Inspect the still artifacts, "
+                        f"fix the components, and re-render."
+                    )
+        except Exception:
+            pass
+    return markers, warning
+
+
 @register_tool
 @tool
 def render_remotion(
@@ -111,29 +192,21 @@ def render_remotion(
         ext, "application/octet-stream"
     )
     kind = "image" if ext == "gif" else "video"
-    art = store_bytes(data, kind=kind, mime=mime, ext=ext)
+    video_marker = _persist(data, kind, mime, ext, {"composition_id": composition_id})
+    video_id = json.loads(video_marker.split("ARTIFACT:", 1)[1])["artifact_id"]
+    url = f"/artifacts/{video_id}/download"
 
-    if db_enabled():
-        try:
-            from ...models import Artifact
+    # Verify what actually rendered: emit a few still artifacts + a blank-frame warning.
+    still_markers, warning = _verify_stills(sbx, project_dir, entry, composition_id)
 
-            with session_scope() as session:
-                session.add(
-                    Artifact(
-                        type=kind,
-                        uri=art.path,
-                        mime=mime,
-                        meta={"composition_id": composition_id},
-                    )
-                )
-        except Exception:
-            pass
-
-    url = f"/artifacts/{art.id}/download"
-    marker = json.dumps(
-        {"artifact_id": art.id, "kind": kind, "mime": mime, "url": url}
-    )
-    return (
-        f"Rendered composition '{composition_id}' ({len(data)} bytes).\n"
-        f"Download/preview: {url}\nARTIFACT:{marker}"
-    )
+    parts = [
+        f"Rendered composition '{composition_id}' ({len(data)} bytes).",
+        f"Download/preview: {url}",
+    ]
+    if warning:
+        parts.append(warning)
+    if still_markers:
+        parts.append(f"({len(still_markers)} verification still(s) attached.)")
+    parts.append(video_marker)
+    parts.extend(still_markers)
+    return "\n".join(parts)

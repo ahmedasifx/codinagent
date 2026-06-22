@@ -56,7 +56,20 @@ register_skill(
 - src/Main.tsx → a <Series> (or <Sequence>) chaining one component per scene; use
   useCurrentFrame, interpolate, spring, AbsoluteFill from 'remotion' for animations.
 - One component file per scene under src/scenes/.
-Then run_command("npm install", cwd={project}) — this is slow, be patient.""",
+Then run_command("npm install", cwd={project}) — this is slow, be patient.
+
+## Remotion correctness rules (avoid blank/invisible output)
+- useCurrentFrame() is <Sequence>-LOCAL: base interpolate() ranges on local frames and
+  always clamp ({extrapolateLeft:'clamp', extrapolateRight:'clamp'}). Never leave an
+  element at opacity 0 / off-canvas for the whole clip.
+- Any CSS-3D: keep rotateX/rotateY small (±15°), never ~±90°; set explicit perspective and
+  transformOrigin; give 3D elements a solid background and fixed size so they can't
+  collapse to a sliver.
+- Fonts: if using @remotion/google-fonts, await readiness (waitUntilDone() /
+  delayRender→continueRender) or text won't render.
+- Don't cover content with full-screen opaque overlays; keep z-order sane.
+- Verify with `npx remotion still <comp> out/_t.png --frame=N` at a few frames and confirm
+  the subject + text are visible BEFORE the full render.""",
     )
 )
 
