@@ -27,7 +27,7 @@ export interface ToolResultBlock {
 
 export interface Artifact {
   artifact_id: string;
-  kind: "image" | "pdf" | "video" | "html" | "audio";
+  kind: "image" | "pdf" | "video" | "html" | "audio" | "csv";
   url: string;
   mime: string;
 }

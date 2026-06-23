@@ -17,7 +17,9 @@ def _sse(message: str, history, agent_slug: str | None, request: ChatRequest):
     async def event_generator():
         async for event in run_agent_stream(
             message, history, agent_slug,
-            planning=request.planning, approved_plan=request.approved_plan,
+            planning=request.planning,
+            approved_plan=request.approved_plan,
+            session_id=request.session_id,
         ):
             yield {"data": json.dumps(event)}
             await asyncio.sleep(0)

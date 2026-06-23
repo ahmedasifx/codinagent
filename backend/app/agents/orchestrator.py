@@ -11,6 +11,8 @@ Available specialists (use delegate_to_agent with these slugs):
 - marketing: Instagram post images + captions
 - document: professional PDFs (CV, report, proposal, invoice)
 - landing_page: responsive landing pages with a live preview
+- lead_generation: scored, ICP-targeted B2B lead lists (CSV) from web search
+- gtm: go-to-market strategy — positioning, outreach sequences, GTM plan PDF
 - coding_agent: general code, data analysis, full-stack apps
 
 Plan the steps, call delegate_to_agent(agent_slug, task) with a complete standalone task

@@ -9,11 +9,13 @@ described in the plan. Generalizes the original `run_agent_stream`:
 """
 
 import re
+import uuid
 from typing import AsyncIterator
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from ..core.config import get_settings
+from ..core.observability import get_langfuse_handler
 from ..registries.agent_registry import AGENT_REGISTRY
 from ..registries.loader import load_builtins
 
@@ -37,6 +39,7 @@ async def run_agent_stream(
     agent_slug: str | None = None,
     planning: str | None = None,
     approved_plan: str | None = None,
+    session_id: str | None = None,
 ) -> AsyncIterator[dict]:
     load_builtins()
     agent_slug = agent_slug or get_settings().default_agent
@@ -96,7 +99,16 @@ async def run_agent_stream(
     try:
         # Default LangGraph recursion_limit (25 super-steps) is too low for long
         # multi-step agents (e.g. the infographic-video pipeline does ~15+ tool calls).
+        trace_id = session_id or str(uuid.uuid4())
+        lf_handler = get_langfuse_handler(
+            session_id=trace_id,
+            agent_slug=agent_slug,
+            trace_name=f"{agent_slug}: {message[:80]}",
+        )
         config = {"recursion_limit": 150}
+        if lf_handler:
+            config["callbacks"] = [lf_handler]
+
         async for event in graph.astream_events(initial, version="v2", config=config):
             kind = event["event"]
             name = event.get("name", "")

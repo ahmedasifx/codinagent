@@ -17,6 +17,8 @@ _MIME = {
     "pdf": ("pdf", "application/pdf"),
     "video": ("mp4", "video/mp4"),
     "audio": ("mp3", "audio/mpeg"),
+    "csv": ("csv", "text/csv"),
+    "html": ("html", "text/html"),
 }
 
 

@@ -42,8 +42,8 @@ services:
         # URL the BROWSER uses to reach the backend (baked in at build time)
         VITE_API_URL: http://localhost:8000
     ports:
-      # 3000 is in the backend's CORS allowlist
-      - "3000:80"
+      # 3001 is in the backend's CORS allowlist (CORS_ORIGINS in backend/.env)
+      - "3001:80"
     depends_on:
       - backend
 

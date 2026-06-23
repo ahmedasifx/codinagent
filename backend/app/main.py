@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import agents, artifacts, chat, credentials, mcp, tools
 from .core.config import get_settings
+from .core.observability import flush as flush_langfuse
 from .core.sandbox import MANAGER
 from .registries.loader import load_builtins
 
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
     load_builtins()
     yield
     MANAGER.close_all()
+    flush_langfuse()
 
 
 app = FastAPI(title="AI Agent Platform API", lifespan=lifespan)

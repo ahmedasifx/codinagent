@@ -58,9 +58,24 @@ class Settings:
         )
         self.default_agent: str = os.environ.get("DEFAULT_AGENT", "coding_agent")
 
+        # Web search (lead-gen / GTM / research tools). Provider-agnostic; no key → the
+        # web_search tool returns an actionable error instead of failing.
+        self.search_api_key: str = os.environ.get("SEARCH_API_KEY", "")
+        self.search_provider: str = os.environ.get("SEARCH_PROVIDER", "tavily")
+
+        # Langfuse observability (optional — all tracing is a no-op if keys are absent)
+        # Accepts LANGFUSE_HOST or LANGFUSE_BASE_URL (local Docker installs use the latter)
+        self.langfuse_public_key: str = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+        self.langfuse_secret_key: str = os.environ.get("LANGFUSE_SECRET_KEY", "")
+        self.langfuse_host: str = (
+            os.environ.get("LANGFUSE_HOST")
+            or os.environ.get("LANGFUSE_BASE_URL")
+            or "https://cloud.langfuse.com"
+        )
+
         # CORS
         self.cors_origins: list[str] = os.environ.get(
-            "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
+            "CORS_ORIGINS", "http://localhost:5173,http://localhost:3001"
         ).split(",")
 
 

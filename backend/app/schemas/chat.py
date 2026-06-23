@@ -13,3 +13,4 @@ class ChatRequest(BaseModel):
     history: list[Message] = []
     planning: str | None = None  # off | auto | approve (overrides agent default)
     approved_plan: str | None = None  # set on the post-approval execute request
+    session_id: str | None = None  # optional client-supplied conversation ID for tracing
