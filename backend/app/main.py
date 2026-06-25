@@ -1,5 +1,6 @@
 """FastAPI app for the AI Agent Platform. Replaces the original backend/main.py."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,10 +12,17 @@ from .core.observability import flush as flush_langfuse
 from .core.sandbox import MANAGER
 from .registries.loader import load_builtins
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_builtins()
+    s = get_settings()
+    if s.langfuse_public_key and s.langfuse_secret_key:
+        logger.info("Langfuse tracing: enabled → %s", s.langfuse_host)
+    else:
+        logger.info("Langfuse tracing: disabled (no LANGFUSE_*_KEY set)")
     yield
     MANAGER.close_all()
     flush_langfuse()

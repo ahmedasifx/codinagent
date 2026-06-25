@@ -37,6 +37,7 @@ analysis/langfuse/  # vendored external clone (Langfuse) for reference only — 
 | `type` | fields | meaning |
 |--------|--------|---------|
 | `token` | `content` | LLM token chunk (agent node only) |
+| `trace` | `trace_id` | Langfuse trace id for this run (enables feedback scoring) |
 | `workflow` | `workflow` | classified workflow (session-level) |
 | `tool_call` | `name`, `args` | tool started |
 | `tool_result` | `content` | tool output |

@@ -16,7 +16,7 @@ psycopg2-binary==2.9.10
 pgvector==0.3.6
 
 # Observability
-langfuse>=2.50.0
+langfuse>=2.50.0,<3
 
 # Tool layer — REST adapter
 httpx==0.27.2

@@ -7,6 +7,7 @@ interface Props {
   message: ChatMessage;
   onApprove?: (id: string, editedPlan: string) => void;
   onReject?: (id: string) => void;
+  onFeedback?: (id: string, traceId: string, value: "up" | "down") => void;
 }
 
 // Minimal markdown-ish rendering: fenced code blocks + inline `code`
@@ -58,8 +59,9 @@ function renderInline(text: string): React.ReactNode[] {
   return parts;
 }
 
-export function MessageBubble({ message, onApprove, onReject }: Props) {
+export function MessageBubble({ message, onApprove, onReject, onFeedback }: Props) {
   const isUser = message.role === "user";
+  const showFeedback = !isUser && !message.isStreaming && !!message.traceId && !!onFeedback;
 
   return (
     <div className={`message ${isUser ? "user" : "assistant"}`}>
@@ -103,6 +105,25 @@ export function MessageBubble({ message, onApprove, onReject }: Props) {
             artifacts={message.artifacts ?? []}
             progress={message.progress}
           />
+        )}
+
+        {showFeedback && (
+          <div className="feedback-row">
+            <button
+              className={`feedback-btn ${message.feedback === "up" ? "active" : ""}`}
+              title="Good response"
+              onClick={() => onFeedback!(message.id, message.traceId!, "up")}
+            >
+              👍
+            </button>
+            <button
+              className={`feedback-btn ${message.feedback === "down" ? "active" : ""}`}
+              title="Bad response"
+              onClick={() => onFeedback!(message.id, message.traceId!, "down")}
+            >
+              👎
+            </button>
+          </div>
         )}
       </div>
     </div>

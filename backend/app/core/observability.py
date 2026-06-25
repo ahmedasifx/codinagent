@@ -1,18 +1,20 @@
-"""Langfuse observability — tracing for every agent run.
+"""Langfuse observability — tracing + scoring for every agent run.
 
-Provides a single function `get_langfuse_handler()` that returns a
-LangChain CallbackHandler wired to Langfuse, or None when Langfuse is not
-configured. All callers treat None as "no tracing" so the app runs fine
-without credentials.
+`start_trace()` creates a trace with a KNOWN id and returns (trace_id, handler) so the
+caller can (a) attach the handler to LangGraph and (b) later attach scores (user feedback,
+evals) to that same trace_id. `score()` pushes a score. All functions are no-ops when
+Langfuse is unconfigured, so the app runs fine without credentials.
 
 Usage in runner.py:
-    handler = get_langfuse_handler(session_id=..., user_id=..., agent_slug=...)
+    trace_id, handler = start_trace(session_id=..., agent_slug=..., name=...)
     config = {"callbacks": [handler], ...} if handler else {"recursion_limit": 150}
+    if trace_id: yield {"type": "trace", "trace_id": trace_id}
 """
 
 from __future__ import annotations
 
 import logging
+import uuid
 
 from .config import get_settings
 
@@ -48,40 +50,64 @@ def _get_client():
     return _langfuse_client
 
 
-def get_langfuse_handler(
+def start_trace(
     session_id: str | None = None,
     user_id: str | None = None,
     agent_slug: str | None = None,
-    trace_name: str | None = None,
-):
-    """Return a configured CallbackHandler, or None if Langfuse is not set up.
+    name: str | None = None,
+) -> tuple[str | None, object | None]:
+    """Create a trace with a known id and return (trace_id, langchain_handler).
+
+    Returns (None, None) when Langfuse is unconfigured/unavailable. The trace_id lets the
+    caller surface it to the client and attach scores (feedback / evals) to the same trace.
 
     Args:
         session_id: conversation/thread ID — groups all turns of one session
-        user_id:    end-user identifier (used for user-level filtering in UI)
+        user_id:    end-user identifier (user-level filtering in the UI)
         agent_slug: which agent is running (attached as a tag)
-        trace_name: human-readable trace label (defaults to agent_slug)
+        name:       human-readable trace label (defaults to agent_slug)
     """
     client = _get_client()
     if client is None:
-        return None
+        return None, None
 
     try:
-        from langfuse.callback import CallbackHandler
-
-        tags = [agent_slug] if agent_slug else []
-        return CallbackHandler(
-            public_key=get_settings().langfuse_public_key,
-            secret_key=get_settings().langfuse_secret_key,
-            host=get_settings().langfuse_host,
+        trace_id = str(uuid.uuid4())
+        trace = client.trace(
+            id=trace_id,
+            name=name or agent_slug or "agent-run",
             session_id=session_id,
             user_id=user_id,
-            tags=tags,
-            trace_name=trace_name or agent_slug or "agent-run",
+            tags=[agent_slug] if agent_slug else [],
         )
+        return trace_id, trace.get_langchain_handler()
     except Exception as e:
-        logger.warning("Could not create Langfuse handler: %s", e)
-        return None
+        # Keys ARE configured but trace/handler creation failed — a real misconfiguration
+        # (wrong SDK version, bad host), not "disabled". Log loudly so it can't hide.
+        logger.error("Langfuse start_trace FAILED (tracing off): %s", e, exc_info=True)
+        return None, None
+
+
+def score(
+    trace_id: str,
+    name: str,
+    value: float,
+    comment: str | None = None,
+    data_type: str = "NUMERIC",
+) -> bool:
+    """Attach a score to a trace (user feedback, eval, heuristic). No-op if disabled."""
+    client = _get_client()
+    if client is None or not trace_id:
+        return False
+    try:
+        client.score(
+            trace_id=trace_id, name=name, value=value, comment=comment, data_type=data_type
+        )
+        client.flush()
+        return True
+    except Exception as e:
+        logger.error("Langfuse score FAILED: %s", e, exc_info=True)
+        return False
 
 
 def flush():

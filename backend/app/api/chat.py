@@ -4,13 +4,27 @@ import asyncio
 import json
 
 from fastapi import APIRouter
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from ..core.config import get_settings
+from ..core.observability import score as lf_score
 from ..engine.runner import run_agent_stream
 from ..schemas.chat import ChatRequest
 
 router = APIRouter()
+
+
+class FeedbackRequest(BaseModel):
+    trace_id: str
+    value: float  # 1 = thumbs up, 0 = thumbs down
+    comment: str | None = None
+
+
+@router.post("/feedback", status_code=204)
+async def submit_feedback(req: FeedbackRequest):
+    """Attach a user-feedback score to a run's Langfuse trace. No-op if Langfuse is off."""
+    lf_score(req.trace_id, name="user_feedback", value=req.value, comment=req.comment)
 
 
 def _sse(message: str, history, agent_slug: str | None, request: ChatRequest):

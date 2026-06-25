@@ -15,7 +15,7 @@ from typing import AsyncIterator
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from ..core.config import get_settings
-from ..core.observability import get_langfuse_handler
+from ..core.observability import start_trace
 from ..registries.agent_registry import AGENT_REGISTRY
 from ..registries.loader import load_builtins
 
@@ -99,12 +99,14 @@ async def run_agent_stream(
     try:
         # Default LangGraph recursion_limit (25 super-steps) is too low for long
         # multi-step agents (e.g. the infographic-video pipeline does ~15+ tool calls).
-        trace_id = session_id or str(uuid.uuid4())
-        lf_handler = get_langfuse_handler(
-            session_id=trace_id,
+        trace_id, lf_handler = start_trace(
+            session_id=session_id or str(uuid.uuid4()),
             agent_slug=agent_slug,
-            trace_name=f"{agent_slug}: {message[:80]}",
+            name=f"{agent_slug}: {message[:80]}",
         )
+        if trace_id:
+            # Surface the trace id so the client can attach user feedback to this run.
+            yield {"type": "trace", "trace_id": trace_id}
         config = {"recursion_limit": 150}
         if lf_handler:
             config["callbacks"] = [lf_handler]

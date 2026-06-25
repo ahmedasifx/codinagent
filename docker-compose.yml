@@ -27,6 +27,10 @@ services:
       ARTIFACT_DIR: /data/artifacts
     # Apply migrations, then start the API (overrides the Dockerfile CMD; no image change)
     command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"
+    # Reach host-published services (e.g. a locally-run Langfuse on :3000) from inside the
+    # container via http://host.docker.internal:<port>. host-gateway maps it on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:

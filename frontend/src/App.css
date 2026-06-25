@@ -205,6 +205,30 @@ body {
 }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* Feedback thumbs */
+.feedback-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.feedback-btn {
+  background: transparent;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.55;
+  transition: opacity .15s, background .15s;
+}
+.feedback-btn:hover { opacity: 1; }
+.feedback-btn.active {
+  opacity: 1;
+  background: var(--accent-soft, rgba(120,120,255,0.15));
+  border-color: var(--accent, #6c6cff);
+}
+
 /* Thinking dots */
 .thinking {
   display: flex;

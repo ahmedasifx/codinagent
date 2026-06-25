@@ -88,6 +88,8 @@ export function useAgent() {
                 switch (event.type) {
                   case "token":
                     return { ...m, content: m.content + event.content };
+                  case "trace":
+                    return { ...m, traceId: event.trace_id };
                   case "plan":
                     return { ...m, plan: event.plan };
                   case "awaiting_approval":
@@ -206,6 +208,21 @@ export function useAgent() {
     setIsRunning(false);
   }, []);
 
+  // Send 👍/👎 feedback for an assistant message → Langfuse score on its trace.
+  const submitFeedback = useCallback(
+    (assistantId: string, traceId: string, value: "up" | "down") => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantId ? { ...m, feedback: value } : m))
+      );
+      fetch(`${API_BASE}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trace_id: traceId, value: value === "up" ? 1 : 0 }),
+      }).catch(() => {});
+    },
+    []
+  );
+
   const clearChat = useCallback(async () => {
     setMessages([]);
     setError(null);
@@ -218,6 +235,7 @@ export function useAgent() {
     messages, isRunning, error, previewUrl, skill,
     agentSlug, setAgentSlug, planningMode, setPlanningMode,
     sendMessage, approvePlan, rejectPlan, stopGeneration, clearChat,
+    submitFeedback,
     closePreview: () => setPreviewUrl(null),
   };
 }

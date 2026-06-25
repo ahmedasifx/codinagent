@@ -19,7 +19,7 @@ class Settings:
         # LLM (OpenRouter, OpenAI-compatible)
         self.openrouter_api_key: str = os.environ.get("OPENROUTER_API_KEY", "")
         self.openrouter_model: str = os.environ.get(
-            "OPENROUTER_MODEL", "deepseek/deepseek-coder"
+            "OPENROUTER_MODEL", "deepseek/deepseek-v4-flash"
         )
         self.openrouter_base_url: str = "https://openrouter.ai/api/v1"
         # Fallback chain: if the primary model errors/429s, OpenRouter routes to the next.

@@ -18,6 +18,10 @@ def get_llm(streaming: bool = True, model: str | None = None) -> ChatOpenAI:
         openai_api_key=s.openrouter_api_key,
         openai_api_base=s.openrouter_base_url,
         streaming=streaming,
+        # Emit token counts even when streaming (sets stream_options.include_usage
+        # upstream). Without this, streamed responses carry no usage → Langfuse can't
+        # compute cost. The final chunk then carries usage_metadata.
+        stream_usage=True,
         temperature=0,
         max_retries=4,
         extra_body=extra_body,

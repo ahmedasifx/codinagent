@@ -36,6 +36,7 @@ export default function App() {
     rejectPlan,
     stopGeneration,
     clearChat,
+    submitFeedback,
     closePreview,
   } = useAgent();
   const [input, setInput] = useState("");
@@ -177,6 +178,7 @@ export default function App() {
             message={msg}
             onApprove={approvePlan}
             onReject={rejectPlan}
+            onFeedback={submitFeedback}
           />
         ))}
 

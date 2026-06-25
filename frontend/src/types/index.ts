@@ -14,6 +14,8 @@ export interface ChatMessage {
   awaitingApproval?: boolean;
   userPrompt?: string; // the originating user message (for the approve→execute request)
   isStreaming?: boolean;
+  traceId?: string; // Langfuse trace id for this run (enables feedback scoring)
+  feedback?: "up" | "down"; // user feedback already submitted for this message
 }
 
 export interface ToolCallBlock {
@@ -40,6 +42,7 @@ export interface ProgressBlock {
 // SSE event payloads from the backend — must mirror app/engine/runner.py
 export type AgentEvent =
   | { type: "token"; content: string }
+  | { type: "trace"; trace_id: string }
   | { type: "agent_selected"; agent: string }
   | { type: "skill_selected"; skill: string }
   | { type: "plan"; plan: string }
