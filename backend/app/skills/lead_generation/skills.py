@@ -8,7 +8,7 @@ composition/reuse and listed as `sub_skills`. Mirrors the infographic_video patt
 from ...registries.skill_registry import register_skill
 from ...registries.types import SkillDef
 
-_SOURCE_TOOLS = ["web_search", "fetch_url", "write_file", "read_file"]
+_SOURCE_TOOLS = ["web_search", "fetch_url", "scrape_page", "crawl_site", "write_file", "read_file"]
 _BUILD_TOOLS = ["execute_python", "write_file", "read_file", "list_files", "install_package"]
 _ALL_TOOLS = list(dict.fromkeys(
     _SOURCE_TOOLS + _BUILD_TOOLS + ["save_artifact", "start_server", "stop_server"]
@@ -44,9 +44,10 @@ register_skill(
         required_tools=_SOURCE_TOOLS,
         instructions=f"""Read {_PROJECT}/icp.json. Use web_search with several targeted
 queries (industry + geography + signals, e.g. "Series A fintech startups UK 2024",
-"<industry> companies hiring <role>"). For promising results, fetch_url the company
-site/about/team page. Collect 10–25 candidate companies. Write
-{_PROJECT}/prospects_raw.json as a list of:
+"<industry> companies hiring <role>"). To read a promising result, prefer scrape_page
+(real browser, renders JS — works on modern SaaS sites where fetch_url returns an empty
+shell); use fetch_url only for simple static pages. Collect 10–25 candidate companies.
+Write {_PROJECT}/prospects_raw.json as a list of:
 {{ "company": str, "website": str, "source_url": str, "notes": str }}
 Cite the source_url for every prospect — do not invent companies.""",
     )
@@ -59,11 +60,13 @@ register_skill(
         description="Enrich each prospect with firmographics + contact hints.",
         when_to_use="add company size, industry, tech, and contact details to prospects",
         required_tools=_SOURCE_TOOLS,
-        instructions=f"""Read {_PROJECT}/prospects_raw.json. For each prospect, fetch_url
-its website (and an about/pricing/team page if useful) to extract: industry, approx
-company size, location, notable tech/products, and any public contact (role + name or
-generic email pattern). Write {_PROJECT}/prospects_enriched.json adding these fields.
-If a fact isn't found, set it to null — never fabricate emails or names.""",
+        instructions=f"""Read {_PROJECT}/prospects_raw.json. For each prospect, gather its
+public pages — use crawl_site(website, max_pages=5) to pull about/team/pricing/contact in
+one call (JS rendered), or scrape_page for a single page. From the returned markdown
+extract: industry, approx company size, location, notable tech/products, and any public
+contact (role + name or generic email pattern). Write {_PROJECT}/prospects_enriched.json
+adding these fields. If a fact isn't found, set it to null — never fabricate emails or
+names.""",
     )
 )
 
@@ -134,10 +137,12 @@ Execute the pipeline in order:
 
 1. ICP — write icp.json (firmographics, buyer personas, buying signals, disqualifiers,
    scoring_weights) from the user's request.
-2. SOURCE — web_search + fetch_url to find 10–25 real companies matching the ICP; write
-   prospects_raw.json with a source_url for each (never invent companies).
-3. ENRICH — fetch_url company pages for industry, size, location, tech, contact hints;
-   write prospects_enriched.json (null for anything not found — no fabricated emails).
+2. SOURCE — web_search to discover, then scrape_page (JS-rendered; fetch_url only for
+   static pages) to confirm 10–25 real companies matching the ICP; write prospects_raw.json
+   with a source_url for each (never invent companies).
+3. ENRICH — crawl_site(website) (or scrape_page) for industry, size, location, tech,
+   contact hints; write prospects_enriched.json (null for anything not found — no
+   fabricated emails).
 4. SCORE — execute_python + pandas to score 0–100 against the ICP weights, apply
    disqualifiers, rank; write leads_scored.json and print the top 5.
 5. EXPORT — write leads.csv and save_artifact(".../leads.csv", "csv"); give the

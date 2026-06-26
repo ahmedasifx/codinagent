@@ -29,6 +29,8 @@ register_agent(
         tools=[
             "web_search",
             "fetch_url",
+            "scrape_page",
+            "crawl_site",
             "execute_python",
             "install_package",
             "write_file",

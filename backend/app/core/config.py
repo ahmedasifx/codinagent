@@ -63,6 +63,14 @@ class Settings:
         self.search_api_key: str = os.environ.get("SEARCH_API_KEY", "")
         self.search_provider: str = os.environ.get("SEARCH_PROVIDER", "tavily")
 
+        # Crawl4AI sidecar (JS-rendering crawler for scrape_page/crawl_site). Empty URL →
+        # those tools report unconfigured and the agent falls back to fetch_url.
+        self.crawl4ai_url: str = os.environ.get("CRAWL4AI_URL", "")
+        self.crawl4ai_token: str = os.environ.get("CRAWL4AI_TOKEN", "")
+
+        # Redis (optional cache for crawl results — the cost lever). No-op if unset.
+        self.redis_url: str = os.environ.get("REDIS_URL", "")
+
         # Langfuse observability (optional — all tracing is a no-op if keys are absent)
         # Accepts LANGFUSE_HOST or LANGFUSE_BASE_URL (local Docker installs use the latter)
         self.langfuse_public_key: str = os.environ.get("LANGFUSE_PUBLIC_KEY", "")

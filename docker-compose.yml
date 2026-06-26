@@ -25,6 +25,10 @@ services:
       # `environment` overrides `env_file`, so the platform always runs against Postgres
       DATABASE_URL: postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent}@db:5432/${POSTGRES_DB:-agent}
       ARTIFACT_DIR: /data/artifacts
+      # Crawl4AI sidecar + Redis cache (reachable on the compose network)
+      CRAWL4AI_URL: http://crawl4ai:11235
+      CRAWL4AI_TOKEN: ${CRAWL4AI_TOKEN:-crawl4ai-local-token}
+      REDIS_URL: redis://redis:6379/0
     # Apply migrations, then start the API (overrides the Dockerfile CMD; no image change)
     command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"
     # Reach host-published services (e.g. a locally-run Langfuse on :3000) from inside the
@@ -38,6 +42,30 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      crawl4ai:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  # JS-rendering crawler for the lead-gen scrape_page/crawl_site tools. Pinned tag — never
+  # :latest (the unpinned-ClickHouse incident). JWT is off by default; fine on this private
+  # network. ~1g shared memory is required for headless Chromium.
+  crawl4ai:
+    image: unclecode/crawl4ai:0.9.0
+    shm_size: 1g
+    restart: unless-stopped
+    environment:
+      # 0.9.0 is secure-by-default: WITHOUT a token it binds to loopback only (unreachable
+      # from other containers/host). Setting the token makes it listen on 0.0.0.0 and
+      # require this bearer token — the backend sends the same value via CRAWL4AI_TOKEN.
+      CRAWL4AI_API_TOKEN: ${CRAWL4AI_TOKEN:-crawl4ai-local-token}
+    ports:
+      # Host-exposed for local testing/verification; not required for backend↔sidecar.
+      - "127.0.0.1:11235:11235"
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
 
   frontend:
     build:
