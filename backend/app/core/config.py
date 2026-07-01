@@ -36,11 +36,10 @@ class Settings:
             "EMBEDDING_MODEL", "openai/text-embedding-3-small"
         )
 
-        # Sandbox
-        self.e2b_api_key: str = os.environ.get("E2B_API_KEY", "")
-        # Sandbox lifetime (seconds). Refreshed on every tool call (rolling keep-alive),
-        # so a long multi-step build won't expire mid-run. Default 30 min.
-        self.sandbox_timeout: int = int(os.environ.get("SANDBOX_TIMEOUT", "1800"))
+        # Sandbox (Railway bridge sidecar)
+        self.railway_bridge_url: str = os.environ.get(
+            "RAILWAY_BRIDGE_URL", "http://localhost:3002"
+        )
 
         # Persistence — empty DATABASE_URL means "DB-less mode": core (code-defined)
         # agents/skills/tools still work; custom records, memory, and run history are

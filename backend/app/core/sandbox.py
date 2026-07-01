@@ -1,96 +1,124 @@
-"""E2B sandbox management.
+"""Railway sandbox bridge client.
 
-Generalizes the original module-level singleton into a session-keyed manager.
-For the current single-user app there is one "default" session, so behaviour is
-identical to before; multi-user simply passes a real session id.
+All sandbox execution runs on Railway Sandboxes. This module is a thin HTTP client
+for the railway-bridge sidecar, which holds the actual Railway Sandbox objects;
+Python just sends it HTTP requests.
 """
 
-import time
-
-from e2b_code_interpreter import Sandbox
+import httpx
 
 from .config import get_settings
 
 DEFAULT_SESSION = "default"
 
 
-class _SandboxSession:
-    def __init__(self, sandbox: Sandbox) -> None:
-        self.sandbox = sandbox
-        # Background dev servers keyed by port: {port: {"handle": ..., "logs": [...]}}
-        self.background: dict[int, dict] = {}
+def _bridge_url(path: str) -> str:
+    return f"{get_settings().railway_bridge_url.rstrip('/')}/{path.lstrip('/')}"
 
+
+def _post(path: str, **json_fields) -> dict:
+    resp = httpx.post(_bridge_url(path), json=json_fields, timeout=180)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _get(path: str, **params) -> httpx.Response:
+    resp = httpx.get(_bridge_url(path), params=params, timeout=60)
+    resp.raise_for_status()
+    return resp
+
+
+def _delete(path: str, **params) -> dict:
+    resp = httpx.delete(_bridge_url(path), params=params, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ── Session manager (thin — real state lives in the bridge) ───────────────────
 
 class SandboxManager:
     def __init__(self) -> None:
-        self._sessions: dict[str, _SandboxSession] = {}
+        self._sessions: set[str] = set()
 
-    def get(self, session_id: str = DEFAULT_SESSION) -> Sandbox:
-        timeout = get_settings().sandbox_timeout
-        sess = self._sessions.get(session_id)
-        if sess is not None:
-            # Rolling keep-alive: every tool call refreshes the timeout, so a long
-            # multi-step build won't expire mid-run. If the sandbox already died,
-            # set_timeout raises — drop it and create a fresh one (auto-recovery).
-            try:
-                sess.sandbox.set_timeout(timeout)
-                return sess.sandbox
-            except Exception:
-                self._sessions.pop(session_id, None)
-        sbx = Sandbox(api_key=get_settings().e2b_api_key, timeout=timeout)
-        self._sessions[session_id] = _SandboxSession(sbx)
-        return self._sessions[session_id].sandbox
-
-    def background(self, session_id: str = DEFAULT_SESSION) -> dict[int, dict]:
-        self.get(session_id)  # ensure session exists
-        return self._sessions[session_id].background
+    def get(self, session_id: str = DEFAULT_SESSION) -> str:
+        self._sessions.add(session_id)
+        return session_id
 
     def close(self, session_id: str = DEFAULT_SESSION) -> None:
-        sess = self._sessions.pop(session_id, None)
-        if sess is None:
-            return
-        for proc in sess.background.values():
-            try:
-                proc["handle"].kill()
-            except Exception:
-                pass
+        self._sessions.discard(session_id)
         try:
-            sess.sandbox.kill()
+            _delete("sandbox", session_id=session_id)
         except Exception:
             pass
 
     def close_all(self) -> None:
-        for sid in list(self._sessions.keys()):
-            self.close(sid)
+        self._sessions.clear()
+        try:
+            _delete("sandbox/all")
+        except Exception:
+            pass
 
 
 MANAGER = SandboxManager()
 
 
-# ── Backward-compatible helpers (default session) ───────────────────────────────
-def get_sandbox(session_id: str = DEFAULT_SESSION) -> Sandbox:
+# ── Backward-compatible helpers ───────────────────────────────────────────────
+
+def get_sandbox(session_id: str = DEFAULT_SESSION) -> str:
     return MANAGER.get(session_id)
-
-
-def background_processes(session_id: str = DEFAULT_SESSION) -> dict[int, dict]:
-    return MANAGER.background(session_id)
 
 
 def close_sandbox(session_id: str = DEFAULT_SESSION) -> None:
     MANAGER.close(session_id)
 
 
-def wait_for_port(sandbox: Sandbox, port: int, attempts: int = 10) -> bool:
-    """Poll until an HTTP port answers (~2s * attempts)."""
-    for _ in range(attempts):
-        time.sleep(2)
-        try:
-            check = sandbox.commands.run(
-                f"curl -s -o /dev/null -w '%{{http_code}}' http://localhost:{port}",
-                timeout=10,
-            )
-            if check.stdout.strip() not in ("", "000"):
-                return True
-        except Exception:
-            continue
-    return False
+# ── Bridge call helpers ───────────────────────────────────────────────────────
+
+def bridge_exec(
+    command: str,
+    session_id: str = DEFAULT_SESSION,
+    cwd: str | None = None,
+    timeout: int = 120,
+) -> dict:
+    return _post("exec", session_id=session_id, command=command, cwd=cwd, timeout=timeout)
+
+
+def bridge_exec_python(code: str, session_id: str = DEFAULT_SESSION) -> dict:
+    return _post("exec-python", session_id=session_id, code=code)
+
+
+def bridge_start_server(
+    command: str,
+    port: int,
+    cwd: str | None = None,
+    session_id: str = DEFAULT_SESSION,
+) -> dict:
+    return _post(
+        "start-server",
+        session_id=session_id,
+        command=command,
+        port=port,
+        cwd=cwd,
+    )
+
+
+def bridge_stop_server(port: int, session_id: str = DEFAULT_SESSION) -> dict:
+    return _post("stop-server", session_id=session_id, port=port)
+
+
+def bridge_write_file(
+    path: str, content: str, session_id: str = DEFAULT_SESSION
+) -> dict:
+    return _post("files/write", session_id=session_id, path=path, content=content)
+
+
+def bridge_read_file(path: str, session_id: str = DEFAULT_SESSION) -> str:
+    resp = _get("files/read", session_id=session_id, path=path)
+    return resp.text
+
+
+def bridge_list_files(
+    path: str = ".", session_id: str = DEFAULT_SESSION
+) -> list[dict]:
+    resp = _get("files/list", session_id=session_id, path=path)
+    return resp.json()

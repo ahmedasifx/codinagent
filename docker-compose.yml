@@ -1,4 +1,14 @@
 services:
+  railway-bridge:
+    build: ./railway-bridge
+    environment:
+      RAILWAY_API_TOKEN: ${RAILWAY_API_TOKEN}
+      RAILWAY_ENVIRONMENT_ID: ${RAILWAY_ENVIRONMENT_ID}
+      PORT: 3000
+      # SANDBOX_IDLE_TIMEOUT_MINUTES: 30
+    ports:
+      - "3002:3000"  # host-exposed for local debugging only; backend uses internal http://railway-bridge:3000
+
   db:
     image: pgvector/pgvector:pg16
     environment:
@@ -19,7 +29,7 @@ services:
 
   backend:
     build: ./backend
-    # E2B_API_KEY, OPENROUTER_API_KEY, OPENROUTER_MODEL, optional TTS_* come from here
+    # OPENROUTER_API_KEY, OPENROUTER_MODEL, optional TTS_* come from here
     env_file: ./backend/.env
     environment:
       # `environment` overrides `env_file`, so the platform always runs against Postgres
@@ -29,6 +39,8 @@ services:
       CRAWL4AI_URL: http://crawl4ai:11235
       CRAWL4AI_TOKEN: ${CRAWL4AI_TOKEN:-crawl4ai-local-token}
       REDIS_URL: redis://redis:6379/0
+      # Railway bridge sidecar
+      RAILWAY_BRIDGE_URL: http://railway-bridge:3000
     # Apply migrations, then start the API (overrides the Dockerfile CMD; no image change)
     command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"
     # Reach host-published services (e.g. a locally-run Langfuse on :3000) from inside the
@@ -45,6 +57,8 @@ services:
       crawl4ai:
         condition: service_started
       redis:
+        condition: service_started
+      railway-bridge:
         condition: service_started
 
   # JS-rendering crawler for the lead-gen scrape_page/crawl_site tools. Pinned tag — never
