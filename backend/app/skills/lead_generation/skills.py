@@ -8,7 +8,8 @@ composition/reuse and listed as `sub_skills`. Mirrors the infographic_video patt
 from ...registries.skill_registry import register_skill
 from ...registries.types import SkillDef
 
-_SOURCE_TOOLS = ["web_search", "fetch_url", "scrape_page", "crawl_site", "write_file", "read_file"]
+_SOURCE_TOOLS = ["web_search", "fetch_url", "scrape_page", "crawl_site", "crawl_many",
+                 "verify_email_domain", "write_file", "read_file"]
 _BUILD_TOOLS = ["execute_python", "write_file", "read_file", "list_files", "install_package"]
 _ALL_TOOLS = list(dict.fromkeys(
     _SOURCE_TOOLS + _BUILD_TOOLS + ["save_artifact", "start_server", "stop_server"]
@@ -59,14 +60,27 @@ register_skill(
         name="Lead Enrichment",
         description="Enrich each prospect with firmographics + contact hints.",
         when_to_use="add company size, industry, tech, and contact details to prospects",
-        required_tools=_SOURCE_TOOLS,
-        instructions=f"""Read {_PROJECT}/prospects_raw.json. For each prospect, gather its
-public pages — use crawl_site(website, max_pages=5) to pull about/team/pricing/contact in
-one call (JS rendered), or scrape_page for a single page. From the returned markdown
-extract: industry, approx company size, location, notable tech/products, and any public
-contact (role + name or generic email pattern). Write {_PROJECT}/prospects_enriched.json
-adding these fields. If a fact isn't found, set it to null — never fabricate emails or
-names.""",
+        required_tools=_SOURCE_TOOLS + ["execute_python"],
+        instructions=f"""Read {_PROJECT}/prospects_raw.json. Enrich in BATCH, not one at a time:
+
+1. CRAWL — call crawl_many([all prospect websites]) once (≤15 URLs per call; chunk if more).
+   It saves each page as markdown under {_PROJECT}/crawl/ and returns only a manifest —
+   do NOT re-read whole files into the conversation. For companies that failed or need a
+   deeper look (team/contact pages), fall back to crawl_site(website, max_pages=5) or
+   scrape_page for that one site.
+2. EXTRACT — with execute_python, process the {_PROJECT}/crawl/*.md files per company and
+   pull: industry, approx company size, location, notable tech/products, and any public
+   contact evidence (names + titles, visible email addresses, generic patterns like
+   info@/hello@). Print a compact per-company summary, not raw page text.
+3. CONTACTS — for each company with contact evidence: if a real email was found on a page,
+   use it with email_status "found". If only names were found, you may propose ONE pattern
+   address (e.g. first.last@domain) ONLY after verify_email_domain(domain) confirms MX,
+   and mark it email_status "pattern-inferred". No MX or no evidence → contact_email null.
+   Never present an inferred address as verified; never fabricate names.
+
+Write {_PROJECT}/prospects_enriched.json adding: industry, size, location, tech,
+contact_name, contact_title, contact_email, email_status ("found" | "pattern-inferred" |
+null), plus the existing fields. Anything not found is null.""",
     )
 )
 
@@ -82,7 +96,13 @@ register_skill(
 using the ICP scoring_weights (industry_fit, size_fit, title_fit, signal_strength),
 apply disqualifiers (score 0 / flag), sort descending, and write
 {_PROJECT}/leads_scored.json (and keep the DataFrame for export). Print the top 5 with
-scores so the user sees a preview.""",
+scores so the user sees a preview.
+
+ITERATE IF THIN: if fewer than 10 leads score ≥ 60 and you have done fewer than 2
+sourcing rounds, derive 2–3 new web_search queries from the traits shared by the
+top-scoring leads (their industry niches, geographies, adjacent keywords), source and
+enrich the new candidates, dedupe by website domain against the existing list, and
+re-score the merged set.""",
     )
 )
 
@@ -95,7 +115,8 @@ register_skill(
         required_tools=_BUILD_TOOLS + ["save_artifact"],
         instructions=f"""With execute_python, write the scored leads to
 {_PROJECT}/leads.csv (columns: rank, company, website, industry, size, location,
-contact, score, signals, source_url). Then call
+contact_name, contact_title, contact_email, email_status, score, signals, source_url).
+Then call
 save_artifact("{_PROJECT}/leads.csv", "csv") and give the user the download URL plus a
 short summary (count, score range, top accounts).""",
     )
@@ -140,11 +161,17 @@ Execute the pipeline in order:
 2. SOURCE — web_search to discover, then scrape_page (JS-rendered; fetch_url only for
    static pages) to confirm 10–25 real companies matching the ICP; write prospects_raw.json
    with a source_url for each (never invent companies).
-3. ENRICH — crawl_site(website) (or scrape_page) for industry, size, location, tech,
-   contact hints; write prospects_enriched.json (null for anything not found — no
-   fabricated emails).
+3. ENRICH — crawl_many([all websites]) in one batch (pages land as markdown under
+   {_PROJECT}/crawl/); extract per-company facts with execute_python from those files
+   (industry, size, location, tech, contact evidence) — keep raw page text out of the
+   conversation. Contacts: real on-page email → email_status "found"; a single
+   pattern-inferred address is allowed only after verify_email_domain confirms MX and
+   must be labeled "pattern-inferred"; otherwise null. Write prospects_enriched.json.
 4. SCORE — execute_python + pandas to score 0–100 against the ICP weights, apply
-   disqualifiers, rank; write leads_scored.json and print the top 5.
+   disqualifiers, rank; write leads_scored.json and print the top 5. If fewer than 10
+   leads score ≥ 60 (and you've done < 2 sourcing rounds), derive new queries from the
+   top leads' traits, repeat SOURCE→ENRICH on the new candidates, dedupe by domain,
+   and re-score the merged set.
 5. EXPORT — write leads.csv and save_artifact(".../leads.csv", "csv"); give the
    download URL + a summary.
 6. DASHBOARD (optional) — if the user wants a live view, build dashboard/index.html and

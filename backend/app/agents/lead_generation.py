@@ -31,6 +31,8 @@ register_agent(
             "fetch_url",
             "scrape_page",
             "crawl_site",
+            "crawl_many",
+            "verify_email_domain",
             "execute_python",
             "install_package",
             "write_file",

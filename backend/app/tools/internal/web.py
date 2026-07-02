@@ -133,7 +133,9 @@ def _markdown_of(result: dict) -> str:
     return md or result.get("cleaned_html") or ""
 
 
-def _post_crawl(urls: list[str], crawler_params: dict) -> list[dict] | str:
+def _post_crawl(
+    urls: list[str], crawler_params: dict, timeout: int = 150
+) -> list[dict] | str:
     """POST to the sidecar /crawl. Returns a list of per-URL results, or an error string."""
     s = get_settings()
     if not s.crawl4ai_url:
@@ -150,7 +152,7 @@ def _post_crawl(urls: list[str], crawler_params: dict) -> list[dict] | str:
             f"{s.crawl4ai_url.rstrip('/')}/crawl",
             json=payload,
             headers=_crawl4ai_headers(),
-            timeout=150,
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -190,6 +192,81 @@ def scrape_page(url: str) -> str:
     out = f"URL: {url}\n\n{text}"
     cache.set(key, out)
     return out
+
+
+def _url_slug(url: str) -> str:
+    """Filesystem-safe filename stem for a URL (host + path, non-alnum → '-')."""
+    stem = re.sub(r"^https?://", "", url).rstrip("/")
+    stem = re.sub(r"[^a-zA-Z0-9]+", "-", stem).strip("-").lower()
+    return stem[:80] or "page"
+
+
+@register_tool
+@tool
+def crawl_many(urls: list[str], out_dir: str = "/home/user/app/leads/crawl") -> str:
+    """Scrape many pages in one batch (JS rendered) and save each as markdown in the sandbox.
+
+    Much faster than calling scrape_page per URL, and keeps page content out of the
+    conversation: full markdown is written to {out_dir}/<slug>.md; only a manifest
+    (url, file, size, ok/fail) is returned. Read/process the files with execute_python.
+    Use for enrichment across a prospect list. Capped at 15 URLs per call.
+    """
+    from ...core.sandbox import bridge_write_file
+
+    urls = [
+        u if u.startswith(("http://", "https://")) else "https://" + u
+        for u in urls[:15]
+    ]
+    if not urls:
+        return "No URLs given."
+
+    # Per-URL cache first (same keys as scrape_page, so the tools share hits).
+    texts: dict[str, str] = {}
+    uncached: list[str] = []
+    for u in urls:
+        cached = cache.get(f"scrape:{u}")
+        if cached is not None:
+            # scrape_page caches "URL: ...\n\n<text>"; strip the header if present
+            texts[u] = cached.split("\n\n", 1)[-1]
+        else:
+            uncached.append(u)
+
+    if uncached:
+        results = _post_crawl(
+            uncached, {"cache_mode": "bypass"},
+            timeout=min(60 + 30 * len(uncached), 300),
+        )
+        if isinstance(results, str):
+            return results
+        for r in results:
+            u = r.get("url") or ""
+            if not r.get("success", True):
+                continue
+            md = _markdown_of(r).strip()
+            if md:
+                # Match against requested URLs loosely (crawler may normalize)
+                key = next((q for q in uncached if q.rstrip("/") == u.rstrip("/")), u)
+                texts[key] = md
+                cache.set(f"scrape:{key}", f"URL: {key}\n\n{md[:_CRAWL_MAX_CHARS]}")
+
+    lines = []
+    for u in urls:
+        text = texts.get(u, "").strip()
+        if not text:
+            lines.append(f"FAIL  {u}  (no content)")
+            continue
+        path = f"{out_dir.rstrip('/')}/{_url_slug(u)}.md"
+        try:
+            bridge_write_file(path, f"URL: {u}\n\n{text}")
+            lines.append(f"OK    {u}  →  {path}  ({len(text)} chars)")
+        except Exception as e:
+            lines.append(f"FAIL  {u}  (could not write {path}: {e})")
+
+    ok = sum(1 for line in lines if line.startswith("OK"))
+    return (
+        f"Crawled {ok}/{len(urls)} pages into {out_dir} "
+        f"(process the .md files with execute_python):\n" + "\n".join(lines)
+    )
 
 
 @register_tool

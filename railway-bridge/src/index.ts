@@ -19,6 +19,7 @@ interface Session {
   servers: Map<number, ExecHandle>;
   cfTunnels: Map<number, ExecHandle>;
   cfInstalled: boolean;
+  pyInstalled: boolean;
 }
 
 // ── Session manager ───────────────────────────────────────────────────────────
@@ -38,8 +39,16 @@ async function getOrCreate(sessionId: string): Promise<Session> {
     servers: new Map(),
     cfTunnels: new Map(),
     cfInstalled: false,
+    pyInstalled: false,
   };
   sessions.set(sessionId, session);
+
+  // Bootstrap eagerly so the first exec/exec-python doesn't pay the install cost,
+  // but don't fail session creation over it — ensurePython retries lazily.
+  ensurePython(session).catch((err) =>
+    console.error("python bootstrap failed (will retry on demand):", err)
+  );
+
   return session;
 }
 
@@ -76,6 +85,37 @@ async function waitForPort(sandbox: Sandbox, port: number): Promise<boolean> {
     } catch {}
   }
   return false;
+}
+
+async function ensurePython(session: Session): Promise<void> {
+  if (session.pyInstalled) return;
+
+  const check = await session.sandbox.exec("command -v python3", {
+    timeoutSec: 15,
+  });
+  if (check.exitCode !== 0) {
+    // Debian base image ships without python. Also point `python`/`pip` at the
+    // python3 variants and disable PEP 668 so plain `pip install` works in this
+    // disposable environment.
+    const r = await session.sandbox.exec(
+      "apt-get update -qq && " +
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-pip python3-venv && " +
+        "printf '[global]\\nbreak-system-packages = true\\n' > /etc/pip.conf && " +
+        "ln -sf \"$(command -v python3)\" /usr/local/bin/python && " +
+        "ln -sf \"$(command -v pip3)\" /usr/local/bin/pip",
+      { timeoutSec: 240 }
+    );
+    if (r.exitCode !== 0) {
+      throw new Error(`python bootstrap failed: ${r.stderr.slice(-500)}`);
+    }
+  } else {
+    // Python already present — still make pip usable on externally-managed distros.
+    await session.sandbox.exec(
+      "test -f /etc/pip.conf || printf '[global]\\nbreak-system-packages = true\\n' > /etc/pip.conf",
+      { timeoutSec: 15 }
+    );
+  }
+  session.pyInstalled = true;
 }
 
 async function ensureCloudflared(session: Session): Promise<void> {
@@ -125,8 +165,13 @@ app.post("/exec", async (req: Request, res: Response) => {
     timeout?: number;
   };
   try {
-    const { sandbox } = await getOrCreate(session_id);
-    const result = await sandbox.exec(command, {
+    const session = await getOrCreate(session_id);
+    // Commands that need the python toolchain wait for the bootstrap; everything
+    // else (npm, mkdir, curl…) runs immediately.
+    if (/\b(python3?|pip3?)\b/.test(command)) {
+      await ensurePython(session);
+    }
+    const result = await session.sandbox.exec(command, {
       cwd,
       timeoutSec: timeout,
     });
@@ -146,7 +191,9 @@ app.post("/exec-python", async (req: Request, res: Response) => {
     code: string;
   };
   try {
-    const { sandbox } = await getOrCreate(session_id);
+    const session = await getOrCreate(session_id);
+    await ensurePython(session);
+    const { sandbox } = session;
     const scriptPath = `/tmp/script_${Date.now()}.py`;
     await sandbox.files.write(scriptPath, code);
     const result = await sandbox.exec(`python3 ${scriptPath}`, {
@@ -172,6 +219,10 @@ app.post("/start-server", async (req: Request, res: Response) => {
   try {
     const session = await getOrCreate(session_id);
     const { sandbox } = session;
+
+    if (/\b(python3?|pip3?|uvicorn|gunicorn|flask|streamlit)\b/.test(command)) {
+      await ensurePython(session);
+    }
 
     // Kill existing server on this port
     const existing = session.servers.get(port);

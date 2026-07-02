@@ -16,20 +16,22 @@ def _bridge_url(path: str) -> str:
     return f"{get_settings().railway_bridge_url.rstrip('/')}/{path.lstrip('/')}"
 
 
-def _post(path: str, **json_fields) -> dict:
-    resp = httpx.post(_bridge_url(path), json=json_fields, timeout=180)
+# First param is prefixed to avoid colliding with kwargs of the same name (the file
+# endpoints send a `path` field, which used to shadow this and blow up _post).
+def _post(_endpoint: str, **json_fields) -> dict:
+    resp = httpx.post(_bridge_url(_endpoint), json=json_fields, timeout=180)
     resp.raise_for_status()
     return resp.json()
 
 
-def _get(path: str, **params) -> httpx.Response:
-    resp = httpx.get(_bridge_url(path), params=params, timeout=60)
+def _get(_endpoint: str, **params) -> httpx.Response:
+    resp = httpx.get(_bridge_url(_endpoint), params=params, timeout=60)
     resp.raise_for_status()
     return resp
 
 
-def _delete(path: str, **params) -> dict:
-    resp = httpx.delete(_bridge_url(path), params=params, timeout=30)
+def _delete(_endpoint: str, **params) -> dict:
+    resp = httpx.delete(_bridge_url(_endpoint), params=params, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
